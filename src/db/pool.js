@@ -11,9 +11,13 @@ if (!process.env.DATABASE_URL) {
 
 // Build SSL config:
 //   - If DATABASE_SSL_CA is set, use that CA file with full cert verification.
-//     This is the secure path for production — Supabase publishes a CA bundle.
-//   - Otherwise use rejectUnauthorized: true (standard SSL verification).
-//     If your provider uses a self-signed cert, set DATABASE_SSL_CA to the CA bundle.
+//     This is the most secure option — download the Supabase CA bundle from your
+//     project settings and set DATABASE_SSL_CA to its file path.
+//   - Otherwise fall back to rejectUnauthorized: false.
+//     Supabase's connection pooler (port 6543 / Supavisor) uses a custom CA
+//     that is not in the default Node.js trust store, so standard verification
+//     fails without the CA bundle. Until DATABASE_SSL_CA is set, the connection
+//     is encrypted in transit but the server certificate is not verified.
 function buildSslConfig() {
   const caPath = process.env.DATABASE_SSL_CA;
   if (caPath) {
@@ -24,7 +28,8 @@ function buildSslConfig() {
       process.exit(1);
     }
   }
-  return { rejectUnauthorized: true };
+  logger.warn('DATABASE_SSL_CA not set — SSL cert verification disabled. Set DATABASE_SSL_CA to the Supabase CA bundle path to enable full verification.');
+  return { rejectUnauthorized: false };
 }
 
 const POOL_MAX = (() => {
