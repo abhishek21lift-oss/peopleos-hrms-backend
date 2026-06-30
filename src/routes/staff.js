@@ -154,7 +154,7 @@ router.post('/', auth, adminOnly, validate(staffSchemas.create), async (req, res
 });
 
 // PUT /api/staff/:id
-router.put('/:id', auth, adminOnly, async (req, res, next) => {
+router.put('/:id', auth, adminOnly, validate(staffSchemas.update), async (req, res, next) => {
   try {
     const { name, email, phone, role, status } = req.body;
     const { rows: ex } = await pool.query('SELECT * FROM staff WHERE id = $1', [req.params.id]);

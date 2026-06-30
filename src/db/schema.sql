@@ -317,14 +317,15 @@ CREATE INDEX IF NOT EXISTS face_desc_client_idx ON face_descriptors (client_id) 
 -- ─── FACE CHECKIN LOGS ───────────────────────────────────────
 -- Audit log of every face recognition check-in attempt.
 CREATE TABLE IF NOT EXISTS face_checkin_logs (
-  id          TEXT        PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
-  client_id   TEXT        REFERENCES clients(id) ON DELETE SET NULL,
-  status      TEXT        NOT NULL DEFAULT 'unknown'
-              CHECK (status IN ('success','failed','unknown','expired','denied','frozen','error','enrolled','revoked')),
-  distance    FLOAT8,
-  ip          TEXT,
-  user_agent  TEXT,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id            TEXT        PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
+  client_id     TEXT        REFERENCES clients(id) ON DELETE SET NULL,
+  attendance_id TEXT        REFERENCES attendance_logs(id) ON DELETE SET NULL,
+  status        TEXT        NOT NULL DEFAULT 'unknown'
+                CHECK (status IN ('success','failed','unknown','expired','denied','frozen','error','enrolled','revoked')),
+  distance      FLOAT8,
+  ip            TEXT,
+  user_agent    TEXT,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS face_log_client_idx ON face_checkin_logs (client_id);

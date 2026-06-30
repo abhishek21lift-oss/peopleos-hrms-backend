@@ -81,11 +81,13 @@ async function auth(req, res, next) {
       if (!user || !user.is_active) {
         return res.status(401).json({ error: 'Account not found or disabled' });
       }
-      // Token revocation: if the JWT's token_version doesn't match the DB,
-      // the user's token has been invalidated (e.g. password changed, deactivated).
-      if (decoded.token_version !== undefined && user.token_version !== undefined &&
-          user.token_version !== decoded.token_version) {
-        return res.status(401).json({ error: 'Session expired, please log in again' });
+      // Token revocation: if the DB user has a token_version set, the JWT must
+      // include a matching token_version. Missing or mismatched versions mean
+      // the token was issued before a password change or forced logout.
+      if (user.token_version !== null && user.token_version !== undefined) {
+        if (decoded.token_version === undefined || decoded.token_version !== user.token_version) {
+          return res.status(401).json({ error: 'Token has been revoked. Please log in again.' });
+        }
       }
       _cacheSet(user.id, user);
     }

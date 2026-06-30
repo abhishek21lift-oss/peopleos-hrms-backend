@@ -12,8 +12,8 @@ if (!process.env.DATABASE_URL) {
 // Build SSL config:
 //   - If DATABASE_SSL_CA is set, use that CA file with full cert verification.
 //     This is the secure path for production — Supabase publishes a CA bundle.
-//   - Otherwise fall back to rejectUnauthorized:false (Supabase-compatible
-//     but doesn't verify the cert chain). Logs a warning so it's visible.
+//   - Otherwise use rejectUnauthorized: true (standard SSL verification).
+//     If your provider uses a self-signed cert, set DATABASE_SSL_CA to the CA bundle.
 function buildSslConfig() {
   const caPath = process.env.DATABASE_SSL_CA;
   if (caPath) {
@@ -24,10 +24,7 @@ function buildSslConfig() {
       process.exit(1);
     }
   }
-  if (process.env.NODE_ENV === 'production') {
-    logger.warn('DATABASE_SSL_CA not set — skipping cert verification. Set it to the Supabase CA bundle path for full cert verification.');
-  }
-  return { rejectUnauthorized: false };
+  return { rejectUnauthorized: true };
 }
 
 const POOL_MAX = (() => {

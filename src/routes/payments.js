@@ -1,5 +1,6 @@
 // src/routes/payments.js
-const router = require('express').Router();
+const express = require('express');
+const router = express.Router();
 const { randomUUID } = require('crypto');
 const pool = require('../db/pool');
 const { genReceiptNo } = require('../db/receipts');
@@ -7,6 +8,37 @@ const { auth, adminOnly } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
 const { paymentSchemas } = require('../lib/validation');
 const logger = require('../lib/logger');
+
+// POST /api/payments/webhook — Razorpay webhook handler (signature-verified)
+router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  try {
+    const signature = req.headers['x-razorpay-signature'];
+    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+    if (!webhookSecret) {
+      logger.warn('RAZORPAY_WEBHOOK_SECRET not configured');
+      return res.status(500).json({ error: 'Webhook not configured' });
+    }
+    const crypto = require('crypto');
+    const expectedSignature = crypto
+      .createHmac('sha256', webhookSecret)
+      .update(req.body)
+      .digest('hex');
+    if (expectedSignature !== signature) {
+      return res.status(400).json({ error: 'Invalid webhook signature' });
+    }
+    const event = JSON.parse(req.body.toString());
+    logger.info({ event: event.event }, 'Razorpay webhook received');
+    if (event.event === 'payment.captured') {
+      const paymentId = event.payload?.payment?.entity?.id;
+      const orderId = event.payload?.payment?.entity?.order_id;
+      logger.info({ paymentId, orderId }, 'Payment captured');
+    }
+    res.json({ status: 'ok' });
+  } catch (err) {
+    logger.error(err, 'Webhook handler error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 // GET /api/payments
 router.get('/', auth, async (req, res, next) => {

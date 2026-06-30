@@ -14,6 +14,8 @@ const { randomUUID } = require('crypto');
 const rateLimit = require('express-rate-limit');
 const pool = require('../db/pool');
 const { auth } = require('../middleware/auth');
+const { validate } = require('../middleware/validate');
+const { bulkAttendanceSchema } = require('../lib/validation');
 
 const biometricLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false });
 
@@ -156,7 +158,7 @@ router.post('/biometric', auth, biometricLimiter, async (req, res, next) => {
             check_in_time=COALESCE(attendance_logs.check_in_time, NOW()),
             notes='biometric',
             method='biometric'`,
-      [id, person.id, type, person.name, req.user.id]
+      [id, person.id, type, person.name, date, req.user.id]
     );
 
     const { rows } = await pool.query(
@@ -254,7 +256,7 @@ router.delete('/:id', auth, async function(req, res, next) {
 });
 
 // POST /api/attendance/bulk — mark attendance for multiple members
-router.post('/bulk', auth, async function(req, res, next) {
+router.post('/bulk', auth, validate(bulkAttendanceSchema), async function(req, res, next) {
   try {
     const records = req.body.records;
     if (!Array.isArray(records) || records.length === 0) {
@@ -267,6 +269,13 @@ router.post('/bulk', auth, async function(req, res, next) {
 
     const results = [];
     const errors = [];
+
+    // Batch-fetch trainer_id for all client records to avoid N+1 queries
+    const clientIds = [...new Set(records.map(r => r.ref_id).filter(Boolean))];
+    const trainerRes = clientIds.length > 0
+      ? await pool.query('SELECT id, trainer_id FROM clients WHERE id = ANY($1)', [clientIds])
+      : { rows: [] };
+    const trainerMap = Object.fromEntries(trainerRes.rows.map(r => [r.id, r.trainer_id]));
 
     for (let i = 0; i < records.length; i++) {
       const d = records[i];
@@ -281,10 +290,8 @@ router.post('/bulk', auth, async function(req, res, next) {
 
         // RBAC: trainers scoped to own clients
         if (req.user.role === 'trainer') {
-          const { rows: own } = await pool.query(
-            'SELECT trainer_id FROM clients WHERE id=$1', [d.ref_id]
-          );
-          if (!own[0] || own[0].trainer_id !== req.user.trainer_id) {
+          const clientTrainerId = trainerMap[d.ref_id];
+          if (clientTrainerId === undefined || clientTrainerId !== req.user.trainer_id) {
             errors.push({ index: i, ref_id: d.ref_id, error: 'Access denied' });
             continue;
           }
@@ -329,21 +336,23 @@ router.get('/stats', auth, async function(req, res, next) {
     const to = req.query.to || new Date().toISOString().split('T')[0];
     const granularity = req.query.granularity || 'day';
 
-    const granularityVal = ['day', 'week', 'month'].includes(granularity) ? granularity : 'day';
+    const VALID_GRANULARITIES = { day: 'day', week: 'week', month: 'month' };
+    const granularityVal = VALID_GRANULARITIES[granularity];
+    if (!granularityVal) return res.status(400).json({ error: 'Invalid granularity' });
     const dateTrunc = granularityVal === 'day' ? 'a.date' : `DATE_TRUNC('${granularityVal}', a.date)`;
 
     const params = [from, to];
     let trainerFilter = '';
     if (req.user.role === 'trainer' && req.user.trainer_id) {
       params.push(req.user.trainer_id);
-      trainerFilter = 'AND u.trainer_id = $' + params.length + ' ';
+      trainerFilter = 'AND c.trainer_id = $' + params.length + ' ';
     }
 
     const { rows } = await pool.query(
       'SELECT ' + dateTrunc + ' AS period, ' +
       'a.status, COUNT(*) AS count ' +
       'FROM attendance_logs a ' +
-      'JOIN users u ON u.id = a.marked_by ' +
+      'JOIN clients c ON c.id = a.ref_id ' +
       'WHERE a.date >= $1 AND a.date <= $2 ' + trainerFilter +
       'AND a.ref_type = \'client\' ' +
       'GROUP BY period, a.status ' +

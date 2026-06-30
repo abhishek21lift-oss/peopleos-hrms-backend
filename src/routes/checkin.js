@@ -108,6 +108,12 @@ router.post('/face', kioskTokenMiddleware, faceLimiter, kioskOrAuth, async (req,
       });
     }
 
+    // OOM guard: refuse to load descriptors into memory if count exceeds limit.
+    const { rows: [{ count }] } = await pool.query('SELECT COUNT(*) FROM face_descriptors WHERE is_active = TRUE');
+    if (parseInt(count) > 1000) {
+      return res.status(503).json({ error: 'Face recognition unavailable: member count exceeds in-memory limit. Enable pgvector for scalable matching.' });
+    }
+
     // Pull active descriptors from the normalized face_descriptors table,
     // joined with client info for membership checks.
     // This is the canonical source — clients.face_descriptor is kept for
@@ -118,7 +124,8 @@ router.post('/face', kioskTokenMiddleware, faceLimiter, kioskOrAuth, async (req,
               d.descriptor AS face_descriptor, d.id AS descriptor_id
          FROM face_descriptors d
          JOIN clients c ON c.id = d.client_id
-        WHERE d.is_active = TRUE`
+        WHERE d.is_active = TRUE
+        LIMIT 2000`
     );
 
     if (clients.length === 0) {
@@ -285,17 +292,15 @@ router.post('/enroll', kioskTokenMiddleware, authOrKioskForEnroll, enrollLimiter
       }
     }
 
-    const jsonDescriptor = formatDescriptorToJson(descriptor);
-
     // Update clients table for backwards compat.
     const clientResult = await pool.query(
       `UPDATE clients
-          SET face_descriptor  = $1::jsonb,
+          SET face_descriptor  = $1::float8[],
               face_enrolled    = TRUE,
               face_enrolled_at = NOW()
         WHERE id = $2
       RETURNING id`,
-      [jsonDescriptor, client_id]
+      [descriptor, client_id]
     );
 
     if (clientResult.rowCount === 0) return res.status(404).json({ error: 'Client not found' });
@@ -311,8 +316,8 @@ router.post('/enroll', kioskTokenMiddleware, authOrKioskForEnroll, enrollLimiter
     const enrolledBy = req.user && req.user.role !== 'kiosk' ? req.user.id : null;
     await pool.query(
       `INSERT INTO face_descriptors (id, client_id, angle, descriptor, is_active, enrolled_by, updated_at)
-       VALUES ($1, $2, 'front', $3::jsonb, TRUE, $4, NOW())`,
-      [descriptorId, client_id, jsonDescriptor, enrolledBy]
+       VALUES ($1, $2, 'front', $3::float8[], TRUE, $4, NOW())`,
+      [descriptorId, client_id, descriptor, enrolledBy]
     );
 
     // Log the enrollment event.
@@ -337,6 +342,9 @@ router.post('/enroll', kioskTokenMiddleware, authOrKioskForEnroll, enrollLimiter
 // ──────────────────────────────────────────────────────────────────
 router.get('/descriptors', auth, async (req, res, next) => {
   try {
+    if (!['admin', 'manager', 'kiosk'].includes(req.user.role)) {
+      return res.status(403).json({ error: 'Access denied: admin, manager, or kiosk role required' });
+    }
     const { rows } = await pool.query(
       `SELECT d.client_id, c.name, d.descriptor
          FROM face_descriptors d
@@ -374,7 +382,7 @@ router.delete('/enroll/:clientId', auth, async (req, res, next) => {
     // Clear clients table.
     await pool.query(
       `UPDATE clients
-          SET face_descriptor  = NULL::jsonb,
+          SET face_descriptor  = NULL::float8[],
               face_enrolled    = FALSE,
               face_enrolled_at = NULL
         WHERE id = $1`,

@@ -88,20 +88,21 @@ router.post('/reset-all-data', auth, adminOnly, async (req, res) => {
   }
 });
 
-/* ══════════════════════════════════════════════════════════════════════
-   POST /admin/reset-outstanding-dues
-══════════════════════════════════════════════════════════════════════ */
+async function doClearDuesAndPayments() {
+  await dropIfExists(pool, 'outstanding_dues');
+  await deleteIfExists(pool, 'payments');
+  const hasClients = (await pool.query("SELECT to_regclass('public.clients') AS exists")).rows[0].exists;
+  if (hasClients) {
+    await pool.query(`UPDATE clients SET balance_amount = 0 WHERE COALESCE(balance_amount, 0) <> 0`).catch(() => {});
+  }
+}
+
 router.post('/reset-outstanding-dues', auth, adminOnly, async (req, res) => {
   if (req.body?.confirm !== 'CLEAR_DUES_619') {
     return res.status(400).json({ error: 'Missing confirmation token. Send { confirm: "CLEAR_DUES_619" }' });
   }
   try {
-    await dropIfExists(pool, 'outstanding_dues');
-    await deleteIfExists(pool, 'payments');
-    const hasClients = (await pool.query("SELECT to_regclass('public.clients') AS exists")).rows[0].exists;
-    if (hasClients) {
-      await pool.query(`UPDATE clients SET balance_amount = 0 WHERE COALESCE(balance_amount, 0) <> 0`).catch(() => {});
-    }
+    await doClearDuesAndPayments();
     res.json({ success: true, message: 'Payments and dues-related data cleared safely, and client balances were reset to zero.' });
   } catch (err) {
     logger.error({ err: err.message }, 'Reset dues error');
@@ -109,12 +110,17 @@ router.post('/reset-outstanding-dues', auth, adminOnly, async (req, res) => {
   }
 });
 
-
 router.post('/clear-dues-and-payments', auth, adminOnly, async (req, res) => {
   if (req.body?.confirm !== 'CLEAR_DUES_619') {
     return res.status(400).json({ error: 'Missing confirmation token. Send { confirm: "CLEAR_DUES_619" }' });
   }
-  return router.handle({ ...req, url: '/reset-outstanding-dues', method: 'POST' }, res, () => {});
+  try {
+    await doClearDuesAndPayments();
+    res.json({ success: true, message: 'Payments and dues-related data cleared safely, and client balances were reset to zero.' });
+  } catch (err) {
+    logger.error({ err: err.message }, 'Clear dues and payments error');
+    res.status(500).json({ error: 'Operation failed. Check server logs.' });
+  }
 });
 
 module.exports = router;

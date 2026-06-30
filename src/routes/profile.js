@@ -42,7 +42,7 @@ const defaultPreferences = {
   compactMode: false,
 };
 
-let schemaReady;
+let schemaInitialized = false;
 
 function jsonOrDefault(value, fallback) {
   if (!value) return { ...fallback };
@@ -72,8 +72,8 @@ function clientInfo(req) {
 }
 
 async function ensureSchema() {
-  if (!schemaReady) {
-    schemaReady = pool.query(`
+  if (!schemaInitialized) {
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS user_profiles (
         user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
         phone TEXT,
@@ -84,12 +84,14 @@ async function ensureSchema() {
         preferences JSONB NOT NULL DEFAULT '{}'::jsonb,
         mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE,
         mfa_secret TEXT,
+        mfa_recovery_codes TEXT[],
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
+    schemaInitialized = true;
   }
-  await schemaReady;
 }
+
 
 async function profileFor(userId) {
   await ensureSchema();
@@ -276,13 +278,17 @@ router.post('/mfa/verify', async (req, res, next) => {
     if (!storedSecret) return res.status(400).json({ error: 'MFA setup required before verification' });
     const valid = authenticator.check(code, storedSecret, { window: 1 });
     if (!valid) return res.status(400).json({ error: 'Invalid MFA code' });
+
+    // Generate recovery codes (plaintext, returned once to user), store hashed
+    const recoveryCodes = Array.from({ length: 8 }, () => crypto.randomBytes(4).toString('hex').toUpperCase());
+    const hashedCodes = await Promise.all(recoveryCodes.map(c => bcrypt.hash(c, 10)));
+
     await pool.query(
       `UPDATE user_profiles
-          SET mfa_enabled = TRUE, updated_at = NOW()
+          SET mfa_enabled = TRUE, mfa_recovery_codes = $2, updated_at = NOW()
         WHERE user_id = $1`,
-      [req.user.id]
+      [req.user.id, hashedCodes]
     );
-    const recoveryCodes = Array.from({ length: 8 }, () => crypto.randomBytes(4).toString('hex').toUpperCase());
     await logActivity(req, 'profile.mfa.enable', 'user', req.user.id);
     res.json({ recoveryCodes });
   } catch (err) {
@@ -451,4 +457,5 @@ router.get('/activity', async (req, res, next) => {
   }
 });
 
+router.ensureSchema = ensureSchema;
 module.exports = router;

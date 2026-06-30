@@ -5,7 +5,7 @@ const pool   = require('../db/pool');
 const { genReceiptNo } = require('../db/receipts');
 const { auth, adminOnly } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
-const { clientSchemas } = require('../lib/validation');
+const { clientSchemas, renewSchema } = require('../lib/validation');
 const logger = require('../lib/logger');
 const { generateClientId, generateMemberCode } = require('../db/id-gen');
 
@@ -96,7 +96,14 @@ router.get('/', auth, async (req, res, next) => {
     maybeAutoExpire().catch(err => console.error('Auto-expire error:', err));
 
     const { rows } = await pool.query(
-      `SELECT c.*, t.name as computed_trainer_name
+      `SELECT c.id, c.client_id, c.member_code, c.name, c.mobile, c.email, c.gender, c.dob,
+              c.address, c.trainer_id, c.trainer_name, c.package_type, c.joining_date,
+              c.pt_start_date, c.pt_end_date, c.expiry_date, c.base_amount, c.discount,
+              c.final_amount, c.paid_amount, c.balance_amount, c.payment_method, c.payment_date,
+              c.status, c.notes, c.photo_url, c.weight, c.face_enrolled, c.face_enrolled_at,
+              c.is_frozen, c.freeze_from, c.freeze_until, c.freeze_reason,
+              c.deleted_at, c.created_at, c.updated_at,
+              t.name as computed_trainer_name
        FROM clients c
        LEFT JOIN trainers t ON t.id = c.trainer_id
        ${where}
@@ -117,7 +124,13 @@ router.get('/search', auth, async (req, res, next) => {
     if (!q) return res.json([]);
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
     const { rows } = await pool.query(
-      `SELECT c.*, t.name as computed_trainer_name
+      `SELECT c.id, c.client_id, c.member_code, c.name, c.mobile, c.email, c.gender, c.dob,
+              c.address, c.trainer_id, c.trainer_name, c.package_type, c.joining_date,
+              c.pt_start_date, c.pt_end_date, c.expiry_date, c.base_amount, c.discount,
+              c.final_amount, c.paid_amount, c.balance_amount, c.payment_method, c.payment_date,
+              c.status, c.notes, c.photo_url, c.weight, c.face_enrolled, c.face_enrolled_at,
+              c.deleted_at, c.created_at, c.updated_at,
+              t.name as computed_trainer_name
        FROM clients c LEFT JOIN trainers t ON t.id = c.trainer_id
        WHERE COALESCE(c.deleted_at, NULL) IS NULL
          AND (c.name ILIKE $1 OR c.mobile ILIKE $1 OR c.client_id ILIKE $1 OR c.email ILIKE $1)
@@ -154,7 +167,7 @@ router.get('/:id', auth, async (req, res, next) => {
     }
 
     // Reception can see basic info but not financial details.
-    const isReception = req.user.role === 'reception' || req.user.role === 'receptionist';
+    const isReception = req.user.role === 'reception';
 
     const [payments, weightLogs, renewals] = await Promise.all([
       pool.query(
@@ -190,7 +203,7 @@ router.get('/:id', auth, async (req, res, next) => {
 // POST /api/clients/:id/renew  — renew an existing client's membership.
 // Wrapped in a transaction so the client row, the renewal row, and (optionally)
 // the payment row all succeed together — or none of them do.
-router.post('/:id/renew', auth, async (req, res, next) => {
+router.post('/:id/renew', auth, validate(renewSchema), async (req, res, next) => {
   const tx = await pool.connect();
   try {
     const d = req.body || {};
@@ -565,6 +578,12 @@ router.get('/:id/payments', auth, async (req, res, next) => {
 router.delete('/:id', auth, adminOnly, async (req, res, next) => {
   try {
     if (req.query.hard === '1') {
+      const expectedConfirm = `HARD_DELETE_${req.params.id}`;
+      if (!req.body || req.body.confirm !== expectedConfirm) {
+        return res.status(400).json({
+          error: `Hard delete requires request body: { "confirm": "${expectedConfirm}" }`,
+        });
+      }
       const { rows } = await pool.query(
         'DELETE FROM clients WHERE id=$1 RETURNING id',
         [req.params.id]

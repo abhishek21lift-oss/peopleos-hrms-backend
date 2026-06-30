@@ -44,7 +44,19 @@ app.disable('x-powered-by');
 // SECURITY
 // ────────────────────────
 app.use(helmet({
-  contentSecurityPolicy: false,
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'none'"],
+      scriptSrc: ["'none'"],
+      styleSrc: ["'none'"],
+      imgSrc: ["'self'", 'data:'],
+      connectSrc: ["'self'"],
+      fontSrc: ["'none'"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'none'"],
+      frameSrc: ["'none'"],
+    },
+  },
   crossOriginResourcePolicy: { policy: 'cross-origin' },
   referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
   hsts: { maxAge: 31536000, includeSubDomains: true, preload: false },
@@ -290,9 +302,13 @@ app.use(errorHandler);
 // START — run migrations first, then listen
 // ────────────────────────
 const { runMigrations } = require('./db/migrate');
+const profileRoute = require('./routes/profile');
 
 logger.info('Running database migrations…');
 runMigrations()
+  .then(function() {
+    return profileRoute.ensureSchema();
+  })
   .then(function() {
     const server = app.listen(PORT, '0.0.0.0', function() {
       logger.info({
