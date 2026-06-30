@@ -691,12 +691,11 @@ router.post('/:id/renew-subscription', auth, async (req, res, next) => {
   } finally { tx.release(); }
 });
 
-module.exports = router;
-
+// ── UNFREEZE ─────────────────────────────────────────────────────────────
 // POST /api/clients/:id/unfreeze
 router.post('/:id/unfreeze', auth, async (req, res, next) => {
   try {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
+    if (!['admin', 'manager'].includes(req.user.role)) return res.status(403).json({ error: 'Admin or manager access required' });
     const { rows } = await pool.query('SELECT * FROM clients WHERE id=$1', [req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Client not found' });
     const c = rows[0];
@@ -719,3 +718,5 @@ router.post('/:id/unfreeze', auth, async (req, res, next) => {
     res.json({ message: 'Membership unfrozen successfully', client: updated[0] });
   } catch (err) { next(err); }
 });
+
+module.exports = router;

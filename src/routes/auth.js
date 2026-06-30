@@ -31,7 +31,7 @@ router.post('/login', validate(authSchemas.login), async (req, res) => {
     let rows;
     try {
       const result = await pool.query(
-        'SELECT * FROM users WHERE LOWER(email) = LOWER($1) AND is_active = true',
+        'SELECT id, email, password, role, mfa_enabled, mfa_secret, token_version, is_active, trainer_id, member_id, name FROM users WHERE LOWER(email) = LOWER($1) AND is_active = true',
         [email]
       );
       rows = result.rows;
@@ -53,6 +53,16 @@ router.post('/login', validate(authSchemas.login), async (req, res) => {
     }
 
     if (!valid) return res.status(401).json({ error: 'Invalid email or password' });
+
+    // ── MFA check — issue pre-auth token if MFA is enabled ────────
+    if (user.mfa_enabled) {
+      const preAuthToken = jwt.sign(
+        { sub: user.id, type: 'mfa_required' },
+        process.env.JWT_SECRET,
+        { expiresIn: '5m' }
+      );
+      return res.status(200).json({ mfa_required: true, pre_auth_token: preAuthToken });
+    }
 
     // ── Update last login (non-critical, don't block on failure) ──
     pool.query('UPDATE users SET last_login = NOW() WHERE id = $1', [user.id])
@@ -87,6 +97,71 @@ router.post('/login', validate(authSchemas.login), async (req, res) => {
   } catch (err) {
     logger.error({ err: err.message, stack: err.stack }, 'Unexpected login error');
     res.status(500).json({ error: 'Unexpected server error. Please try again.' });
+  }
+});
+
+// POST /api/auth/mfa/verify — verify TOTP code after pre-auth token step
+router.post('/mfa/verify', async (req, res) => {
+  try {
+    const { code, pre_auth_token } = req.body;
+    if (!code || !pre_auth_token) {
+      return res.status(400).json({ error: 'code and pre_auth_token are required' });
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(pre_auth_token, process.env.JWT_SECRET);
+    } catch (err) {
+      return res.status(401).json({ error: 'Invalid or expired pre-auth token' });
+    }
+
+    if (decoded.type !== 'mfa_required') {
+      return res.status(401).json({ error: 'Invalid token type' });
+    }
+
+    const userId = decoded.sub;
+    const { rows } = await pool.query(
+      'SELECT id, name, email, role, trainer_id, member_id, token_version, is_active FROM users WHERE id = $1 AND is_active = true',
+      [userId]
+    );
+    if (!rows[0]) return res.status(401).json({ error: 'User not found or disabled' });
+    const user = rows[0];
+
+    // Fetch MFA secret from user_profiles
+    const { rows: profileRows } = await pool.query(
+      'SELECT mfa_secret FROM user_profiles WHERE user_id = $1',
+      [userId]
+    );
+    const mfaSecret = profileRows[0] && profileRows[0].mfa_secret;
+    if (!mfaSecret) return res.status(400).json({ error: 'MFA not configured' });
+
+    const { authenticator } = require('otplib');
+    const valid = authenticator.check(code, mfaSecret, { window: 1 });
+    if (!valid) return res.status(401).json({ error: 'Invalid MFA code' });
+
+    pool.query('UPDATE users SET last_login = NOW() WHERE id = $1', [userId])
+      .catch(function(err) { logger.warn({ err: err.message }, 'last_login update failed (non-critical)'); });
+
+    const token = jwt.sign(
+      { id: user.id, token_version: user.token_version },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+    );
+
+    setTokenCookie(res, token);
+    res.json({
+      user: {
+        id:         user.id,
+        name:       user.name,
+        email:      user.email,
+        role:       user.role,
+        trainer_id: user.trainer_id,
+        member_id:  user.member_id,
+      },
+    });
+  } catch (err) {
+    logger.error({ err: err.message }, 'MFA verify error');
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
@@ -182,8 +257,8 @@ async function changePasswordHandler(req, res) {
 
     if (!currentPassword || !newPassword)
       return res.status(400).json({ error: 'Both current and new password are required' });
-    if (typeof newPassword !== 'string' || newPassword.length < 6)
-      return res.status(400).json({ error: 'New password must be at least 6 characters' });
+    if (typeof newPassword !== 'string' || newPassword.length < 8)
+      return res.status(400).json({ error: 'New password must be at least 8 characters' });
 
     const { rows } = await pool.query(
       'SELECT password FROM users WHERE id = $1', [req.user.id]

@@ -144,6 +144,45 @@ const staffSchemas = {
       status: z.string().optional(),
     }),
   },
+  update: {
+    body: z.object({
+      name: z.string().min(1).max(255).transform(function(v) { return v.trim(); }).optional(),
+      email: emailOptional,
+      phone: z.string().max(20).optional().nullable(),
+      role: z.string().optional(),
+      status: z.string().optional(),
+    }),
+  },
+};
+
+const renewSchema = {
+  body: z.object({
+    package_type: z.string().min(1, 'Package type is required'),
+    pt_start_date: z.string().min(1, 'Start date is required'),
+    pt_end_date: z.string().min(1, 'End date is required'),
+    base_amount: z.number().optional().nullable(),
+    discount: z.number().optional().nullable(),
+    final_amount: z.number().optional().nullable(),
+    paid_amount: z.number().optional().nullable(),
+    payment_method: z.string().optional(),
+    renewed_on: z.string().optional(),
+    notes: z.string().max(1000).optional().nullable(),
+  }),
+};
+
+const bulkAttendanceSchema = {
+  body: z.object({
+    records: z.array(z.object({
+      ref_id: z.string().min(1, 'ref_id is required'),
+      date: z.string().min(1, 'date is required'),
+      status: z.enum(['present', 'absent', 'late', 'half_day']),
+      type: z.string().optional(),
+      ref_name: z.string().optional().nullable(),
+      check_in: z.string().optional().nullable(),
+      check_out: z.string().optional().nullable(),
+      notes: z.string().max(500).optional().nullable(),
+    })).min(1, 'At least one record is required').max(200, 'Maximum 200 records per bulk operation'),
+  }),
 };
 
 const trainerSchemas = {
@@ -175,5 +214,7 @@ module.exports = {
   planSchemas,
   staffSchemas,
   trainerSchemas,
+  renewSchema,
+  bulkAttendanceSchema,
   z,
 };

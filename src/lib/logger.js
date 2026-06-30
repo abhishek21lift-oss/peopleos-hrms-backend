@@ -9,7 +9,19 @@ const logger = pino({
     ? undefined
     : { target: 'pino/file', options: { destination: 1 } },
   redact: {
-    paths: ['req.headers.authorization', 'req.headers.cookie', 'body.password', 'body.currentPassword', 'body.newPassword', 'body.token'],
+    paths: [
+      'req.headers.authorization',
+      'req.headers.cookie',
+      'body.password',
+      'body.currentPassword',
+      'body.newPassword',
+      'body.token',
+      '*.newPw',
+      '*.oldPassword',
+      '*.current',
+      '*.newPassword',
+      '*.confirmPassword',
+    ],
     censor: '[REDACTED]',
   },
   serializers: {
