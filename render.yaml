@@ -1,11 +1,11 @@
 services:
   - type: web
-    name: 619-erp-backend
+    name: peopleos-hrms-backend
     runtime: node
     plan: free
-    repo: https://github.com/abhishek21lift-oss/619-erp-backend
+    repo: https://github.com/abhishek21lift-oss/peopleos-hrms-backend
     branch: main
-    buildCommand: npm install
+    buildCommand: npm install && npm run build
     startCommand: node src/server.js
     envVars:
       - key: NODE_VERSION
