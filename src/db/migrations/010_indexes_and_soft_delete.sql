@@ -24,16 +24,19 @@ CREATE INDEX IF NOT EXISTS idx_payments_client_id
 CREATE INDEX IF NOT EXISTS idx_payments_date
   ON payments (date DESC);
 
--- ── 4. Attendance — ref_id / date ─────────────────────────────────────────────
+-- ── 4. Attendance — ref_id / date (table is attendance_logs) ─────────────────
 CREATE INDEX IF NOT EXISTS idx_attendance_ref_id
-  ON attendance (ref_id);
+  ON attendance_logs (ref_id);
 
 CREATE INDEX IF NOT EXISTS idx_attendance_date
-  ON attendance (date DESC);
+  ON attendance_logs (date DESC);
 
--- ── 5. Subscriptions — client_id ─────────────────────────────────────────────
-CREATE INDEX IF NOT EXISTS idx_subscriptions_client_id
-  ON subscriptions (client_id);
+-- ── 5. Subscriptions — client_id (table removed in migration 021) ────────────
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'subscriptions') THEN
+    CREATE INDEX IF NOT EXISTS idx_subscriptions_client_id ON subscriptions (client_id);
+  END IF;
+END $$;
 
 -- ── 6. Face check-in logs — client_id / created_at ───────────────────────────
 CREATE INDEX IF NOT EXISTS idx_face_checkin_logs_client_id
@@ -46,6 +49,9 @@ CREATE INDEX IF NOT EXISTS idx_face_checkin_logs_created_at
 CREATE INDEX IF NOT EXISTS idx_clients_trainer_id
   ON clients (trainer_id);
 
--- ── 8. Renewals — client_id ──────────────────────────────────────────────────
-CREATE INDEX IF NOT EXISTS idx_renewals_client_id
-  ON renewals (client_id);
+-- ── 8. Renewals — client_id (table removed in migration 021) ─────────────────
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'renewals') THEN
+    CREATE INDEX IF NOT EXISTS idx_renewals_client_id ON renewals (client_id);
+  END IF;
+END $$;

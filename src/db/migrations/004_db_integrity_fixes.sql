@@ -56,5 +56,9 @@ CREATE INDEX IF NOT EXISTS users_last_login_idx ON users (last_login) WHERE dele
 -- ─── 5. Composite indexes for common query patterns ───────────────────
 CREATE INDEX IF NOT EXISTS payments_client_date_idx ON payments (client_id, date DESC);
 CREATE INDEX IF NOT EXISTS leave_trainer_status_idx ON leave_requests (trainer_id, status);
-CREATE INDEX IF NOT EXISTS subscriptions_active_client_idx ON subscriptions (client_id, status, end_date);
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'subscriptions') THEN
+    CREATE INDEX IF NOT EXISTS subscriptions_active_client_idx ON subscriptions (client_id, status, end_date);
+  END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS atlog_status_idx ON attendance_logs (status);
