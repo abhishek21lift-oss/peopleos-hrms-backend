@@ -51,8 +51,15 @@ DO $$ BEGIN
 END $$;
 
 -- ─── 4. Index on attendance_id for faster joins ────────────────────
-CREATE INDEX IF NOT EXISTS face_log_attendance_idx ON face_checkin_logs (attendance_id)
-  WHERE attendance_id IS NOT NULL;
+DO $$ BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'face_checkin_logs' AND column_name = 'attendance_id'
+  ) THEN
+    CREATE INDEX IF NOT EXISTS face_log_attendance_idx ON face_checkin_logs (attendance_id)
+      WHERE attendance_id IS NOT NULL;
+  END IF;
+END $$;
 
 -- ─── 5. Fix orphaned clients that have face_descriptor jsonb but no active face_descriptors row ──
 UPDATE clients c

@@ -279,7 +279,11 @@ CREATE INDEX IF NOT EXISTS audit_table_idx     ON audit_log (table_name, record_
 CREATE INDEX IF NOT EXISTS audit_date_idx      ON audit_log (created_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS clients_mobile_uniq ON clients (mobile)
   WHERE mobile IS NOT NULL AND mobile != '';
-CREATE INDEX IF NOT EXISTS st_staff_idx        ON staff_targets (staff_id);
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'staff_targets') THEN
+    CREATE INDEX IF NOT EXISTS st_staff_idx ON staff_targets (staff_id);
+  END IF;
+END $$;
 
 -- ─── UPDATED-AT TRIGGERS ─────────────────────────────────────
 DO $$ DECLARE
