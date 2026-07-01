@@ -1,10 +1,10 @@
 -- ============================================================
 -- 011_pt_os_module.sql
--- PT OS â€” Personal Training Operating System
+-- PT OS – Personal Training Operating System
 -- Adds: pt-specific columns, pt_plans, pt_commissions, pt_payouts, views
 -- ============================================================
 
--- â”€â”€â”€ Extend clients with PT-specific columns â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ─── Extend clients with PT-specific columns ──────────────────
 ALTER TABLE clients
   ADD COLUMN IF NOT EXISTS duration_months    INT,
   ADD COLUMN IF NOT EXISTS monthly_pt_amount  NUMERIC(12,2) NOT NULL DEFAULT 0,
@@ -21,7 +21,7 @@ WHERE pt_start_date IS NOT NULL AND pt_end_date IS NOT NULL
   AND (duration_months IS NULL OR duration_months = 0);
 
 
--- â”€â”€â”€ PT PLANS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ─── PT PLANS ─────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS pt_plans (
   id              TEXT         PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
   name            TEXT         NOT NULL UNIQUE,
@@ -42,7 +42,7 @@ INSERT INTO pt_plans (name, duration_months, base_amount, description) VALUES
 ON CONFLICT (name) DO NOTHING;
 
 
--- â”€â”€â”€ PT COMMISSIONS (monthly accruals) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ─── PT COMMISSIONS (monthly accruals) ────────────────────────
 CREATE TABLE IF NOT EXISTS pt_commissions (
   id              TEXT         PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
   trainer_id      TEXT         NOT NULL REFERENCES trainers(id) ON DELETE CASCADE,
@@ -65,7 +65,7 @@ CREATE INDEX IF NOT EXISTS pt_comm_month_idx   ON pt_commissions (month);
 CREATE INDEX IF NOT EXISTS pt_comm_status_idx  ON pt_commissions (status);
 
 
--- â”€â”€â”€ PT PAYOUTS (batch payments to trainers) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ─── PT PAYOUTS (batch payments to trainers) ──────────────────
 CREATE TABLE IF NOT EXISTS pt_payouts (
   id              TEXT         PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
   trainer_id      TEXT         NOT NULL REFERENCES trainers(id) ON DELETE CASCADE,
@@ -90,7 +90,8 @@ CREATE INDEX IF NOT EXISTS pt_payouts_trainer_idx ON pt_payouts (trainer_id, mon
 CREATE INDEX IF NOT EXISTS pt_payouts_status_idx  ON pt_payouts (status);
 
 
--- â”€â”€â”€ VIEW: Active clients per trainer (like Excel sheets) â”€â”€â”€â”€â”€
+-- ─── VIEW: Active clients per trainer (like Excel sheets) ─────
+DROP VIEW IF EXISTS v_pt_active_clients;
 CREATE OR REPLACE VIEW v_pt_active_clients AS
 SELECT
   c.id,
@@ -123,7 +124,8 @@ WHERE c.deleted_at IS NULL
   AND c.pt_start_date IS NOT NULL;
 
 
--- â”€â”€â”€ VIEW: Balance sheet (clients with pending dues) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ─── VIEW: Balance sheet (clients with pending dues) ──────────
+DROP VIEW IF EXISTS v_pt_balance_sheet;
 CREATE OR REPLACE VIEW v_pt_balance_sheet AS
 SELECT
   c.id,
@@ -152,7 +154,8 @@ WHERE c.deleted_at IS NULL
 ORDER BY c.balance_amount DESC;
 
 
--- â”€â”€â”€ VIEW: Trainer monthly earnings summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ─── VIEW: Trainer monthly earnings summary ───────────────────
+DROP VIEW IF EXISTS v_pt_trainer_earnings;
 CREATE OR REPLACE VIEW v_pt_trainer_earnings AS
 SELECT
   t.id AS trainer_id,
@@ -172,7 +175,7 @@ WHERE t.deleted_at IS NULL
 GROUP BY t.id, t.name, DATE_TRUNC('month', c.pt_start_date), t.incentive_rate;
 
 
--- â”€â”€â”€ TRIGGER: auto-update trainer_commission when monthly_pt_amount changes â”€â”€
+-- ─── TRIGGER: auto-update trainer_commission when monthly_pt_amount changes ──
 CREATE OR REPLACE FUNCTION fn_update_trainer_commission()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
