@@ -290,6 +290,10 @@ BEGIN
                                'pt_sessions','branches','members','member_memberships',
                                'bookings','class_sessions','class_templates'])
   LOOP
+    -- Skip tables that no longer exist (e.g. renewals removed in migration 021)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = t) THEN
+      CONTINUE;
+    END IF;
     IF NOT EXISTS (
       SELECT 1 FROM pg_trigger
       WHERE tgname = 'trg_' || t || '_updated_at'

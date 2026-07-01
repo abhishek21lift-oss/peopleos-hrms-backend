@@ -16,8 +16,12 @@ ALTER TABLE clients ADD COLUMN IF NOT EXISTS next_followup_date DATE;
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 
--- ─── action_type on renewals ─────────────────────────────────
-ALTER TABLE renewals ADD COLUMN IF NOT EXISTS action_type TEXT DEFAULT 'renewal';
+-- ─── action_type on renewals (table removed in migration 021) ─
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'renewals') THEN
+    ALTER TABLE renewals ADD COLUMN IF NOT EXISTS action_type TEXT DEFAULT 'renewal';
+  END IF;
+END $$;
 
 -- ─── membership_actions table ────────────────────────────────
 CREATE TABLE IF NOT EXISTS membership_actions (
