@@ -91,6 +91,7 @@ CREATE INDEX IF NOT EXISTS pt_payouts_status_idx  ON pt_payouts (status);
 
 
 -- â”€â”€â”€ VIEW: Active clients per trainer (like Excel sheets) â”€â”€â”€â”€â”€
+DROP VIEW IF EXISTS v_pt_active_clients;
 CREATE OR REPLACE VIEW v_pt_active_clients AS
 SELECT
   c.id,
@@ -124,6 +125,7 @@ WHERE c.deleted_at IS NULL
 
 
 -- â”€â”€â”€ VIEW: Balance sheet (clients with pending dues) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+DROP VIEW IF EXISTS v_pt_balance_sheet;
 CREATE OR REPLACE VIEW v_pt_balance_sheet AS
 SELECT
   c.id,
@@ -153,6 +155,7 @@ ORDER BY c.balance_amount DESC;
 
 
 -- â”€â”€â”€ VIEW: Trainer monthly earnings summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+DROP VIEW IF EXISTS v_pt_trainer_earnings;
 CREATE OR REPLACE VIEW v_pt_trainer_earnings AS
 SELECT
   t.id AS trainer_id,

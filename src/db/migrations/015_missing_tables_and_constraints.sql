@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS members (
 CREATE TABLE IF NOT EXISTS member_memberships (
   id              TEXT        PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
   member_id       TEXT        NOT NULL REFERENCES members(id) ON DELETE CASCADE,
-  subscription_id TEXT        REFERENCES subscriptions(id) ON DELETE SET NULL,
+  subscription_id TEXT,
   plan_name       TEXT        NOT NULL,
   start_date      DATE        NOT NULL,
   end_date        DATE        NOT NULL,
@@ -100,7 +100,7 @@ CREATE TABLE IF NOT EXISTS member_memberships (
 CREATE TABLE IF NOT EXISTS holds_freezes (
   id              TEXT        PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
   client_id       TEXT        NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
-  subscription_id TEXT        REFERENCES subscriptions(id) ON DELETE CASCADE,
+  subscription_id TEXT,
   reason          TEXT,
   freeze_from     DATE        NOT NULL,
   freeze_until    DATE        NOT NULL,
@@ -279,7 +279,11 @@ CREATE INDEX IF NOT EXISTS audit_table_idx     ON audit_log (table_name, record_
 CREATE INDEX IF NOT EXISTS audit_date_idx      ON audit_log (created_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS clients_mobile_uniq ON clients (mobile)
   WHERE mobile IS NOT NULL AND mobile != '';
-CREATE INDEX IF NOT EXISTS st_staff_idx        ON staff_targets (staff_id);
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'staff_targets') THEN
+    CREATE INDEX IF NOT EXISTS st_staff_idx ON staff_targets (staff_id);
+  END IF;
+END $$;
 
 -- ─── UPDATED-AT TRIGGERS ─────────────────────────────────────
 DO $$ DECLARE
