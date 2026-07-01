@@ -6,7 +6,8 @@
 --   4. Fix orphaned enrollment data
 --   5. Ensure indexes exist on attendance_id
 
--- ─── 1. Make angle nullable with default 'front' ─────────────────
+-- ─── 1. Ensure angle column exists, then make it nullable with default ──
+ALTER TABLE face_descriptors ADD COLUMN IF NOT EXISTS angle TEXT DEFAULT 'front';
 DO $$ BEGIN
   IF EXISTS (
     SELECT 1 FROM information_schema.columns
