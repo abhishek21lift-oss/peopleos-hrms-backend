@@ -11,7 +11,7 @@ const logger = require('../lib/logger');
 function originCheck(req, res, next) {
   // Skip for server-to-server calls (no origin) and health checks
   if (!req.headers.origin && !req.headers.referer) return next();
-  if (req.path === '/api/health') return next();
+  if (req.path === '/health') return next();
 
   const origin = req.headers.origin || req.headers.referer;
   if (!origin) return next();
@@ -32,6 +32,9 @@ function originCheck(req, res, next) {
     ];
 
     if (allowedHosts.includes(hostname)) return next();
+
+    // Allow all Vercel preview/production deployments
+    if (hostname.endsWith('.vercel.app')) return next();
 
     logger.warn({ origin: origin, hostname: hostname, path: req.path }, 'Origin check failed');
     return res.status(403).json({ error: 'Forbidden' });
